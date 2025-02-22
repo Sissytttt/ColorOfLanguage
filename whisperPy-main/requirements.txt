@@ -1,0 +1,5 @@
+git+https://github.com/openai/whisper.git
+openai
+pyaudio
+playsound==1.2.2
+pyobjc
