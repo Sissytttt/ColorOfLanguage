@@ -9,8 +9,10 @@ import threading
 import time
 import openai
 import serial
+import serial.tools.list_ports
 
-# arduino = serial.Serial(port='/dev/ttyUSB0', baudrate=9600, timeout=1)
+
+arduino = serial.Serial(port='/dev/cu.usbmodem21301', baudrate=9600, timeout=1)
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcp_key.json"
 load_dotenv()
@@ -19,6 +21,9 @@ conversation_history = [
     {"role": "system", "content": "You are a color expert. Respond only with an RGB tuple."}
 ]
 
+ports = serial.tools.list_ports.comports()
+for port in ports:
+    print(f"Found Port: {port.device} - {port.description}")
 
 speech_client = speech.SpeechClient()
 
@@ -39,31 +44,27 @@ INPUT_DEVICE_INDEX = None
 audio_queue = queue.Queue()
 
 def serial_manager():
-    """独立线程，管理 pyserial 发送数据"""
     while True:
         rgb_color = serial_queue.get() 
         if isinstance(rgb_color, tuple) and len(rgb_color) == 3:
             r, g, b = rgb_color
             color_str = f"{r},{g},{b}\n"
-            # arduino.write(color_str.encode()) 
+            arduino.write(color_str.encode()) 
             print(f"Sent to Arduino: {color_str}")
         else:
             print(f"Invalid RGB format: {rgb_color}")
 
 def send_rgb_to_arduino(rgb_color):
-    """将 RGB 颜色值添加到队列"""
     serial_queue.put(rgb_color)
 
 serial_thread = threading.Thread(target=serial_manager, daemon=True)
 serial_thread.start()
 
 def callback(in_data, frame_count, time_info, status):
-    """语音流回调函数，将音频数据放入队列"""
     audio_queue.put(in_data)
     return None, pyaudio.paContinue
 
 def audio_generator():
-    """语音数据生成器，将音频流传递给 Google API"""
     while True:
         chunk = audio_queue.get()
         if chunk is None:
@@ -72,7 +73,6 @@ def audio_generator():
 
 
 def listen():
-    """监听语音并解析"""
     p = pyaudio.PyAudio()
     stream = p.open(
         format=FORMAT, channels=CHANNELS, rate=RATE, input=True,
@@ -144,7 +144,6 @@ def check_speaking():
 
 
 def create_agent_and_get_rgb(prompt):
-    """调用 OpenAI 生成 RGB 颜色值"""
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[
@@ -157,7 +156,6 @@ def create_agent_and_get_rgb(prompt):
 
 
 def send_msg_to_and_get_rgb(text):
-    """发送消息到 GPT 并获取 RGB 颜色"""
     global conversation_history
     conversation_history.append({"role": "user", "content": text})
 

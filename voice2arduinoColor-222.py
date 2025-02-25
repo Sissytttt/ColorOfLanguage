@@ -9,7 +9,7 @@ import time
 import openai
 import serial
 
-arduino = serial.Serial(port='/dev/ttyUSB0', baudrate=9600, timeout=1)
+# arduino = serial.Serial(port='/dev/ttyUSB0', baudrate=9600, timeout=1)
 
 os.environ["GRPC_VERBOSITY"] = "ERROR"  # Only show errors
 os.environ["GRPC_TRACE"] = "none"  # Disable trace logs
