@@ -27,7 +27,8 @@ for port in ports:
 
 speech_client = speech.SpeechClient()
 
-is_speaking = False
+is_speaking = False # for analyze speaking session 
+cur_speaking = False # if the user is speaking 
 in_speaking_session = False
 light_on = False
 last_speech_time = 0
@@ -45,17 +46,22 @@ audio_queue = queue.Queue()
 
 def serial_manager():
     while True:
-        rgb_color = serial_queue.get() 
-        if isinstance(rgb_color, tuple) and len(rgb_color) == 3:
-            r, g, b = rgb_color
-            color_str = f"{r},{g},{b}\n"
+        msg = serial_queue.get()
+        if isinstance(msg, tuple) and len(msg) == 3:
+            r, g, b = msg
+            color_str = f"COLOR: {r},{g},{b}\n"
             arduino.write(color_str.encode()) 
             print(f"Sent to Arduino: {color_str}")
+        elif isinstance(msg, str):
+            # "SPEAKING" / "STOP" / "KEYWORD"
+            arduino.write(f"{msg}\n".encode())
+            print(f"Sent to Arduino: {msg}")
         else:
-            print(f"Invalid RGB format: {rgb_color}")
+            print(f"Invalid message format: {msg}")
 
-def send_rgb_to_arduino(rgb_color):
-    serial_queue.put(rgb_color)
+
+def send_to_arduino(msg):
+    serial_queue.put(msg)
 
 serial_thread = threading.Thread(target=serial_manager, daemon=True)
 serial_thread.start()
@@ -95,24 +101,26 @@ def listen():
     detect_color(responses)
 
 def detect_color(responses):
-    global last_speech_time, light_on, in_speaking_session
+    global cur_speaking, last_speech_time, light_on, in_speaking_session
     for response in responses:
         for result in response.results:
             if result.is_final:
+                cur_speaking = False
+                light_on = False
+                send_to_arduino("STOP SPEAKING")
                 text = result.alternatives[0].transcript.lower()
                 last_speech_time = time.time()
                 print(f"Final Audio: {text}") 
-
                 if is_speaking and not in_speaking_session and "color" in text:
                     color_info = create_agent_and_get_rgb(text)
                     print(f"Return color value: {color_info}")
-                    send_rgb_to_arduino(color_info) 
+                    send_to_arduino(color_info)
                     in_speaking_session = True
 
                 elif is_speaking and in_speaking_session:
                     color_info = send_msg_to_and_get_rgb(text)
                     print(f"Return color value: {color_info}")
-                    send_rgb_to_arduino(color_info)
+                    send_to_arduino(color_info)
 
                 elif not is_speaking:
                     in_speaking_session = False
@@ -122,10 +130,15 @@ def detect_color(responses):
             else:
                 text = result.alternatives[0].transcript.lower()
                 last_speech_time = time.time()
+                cur_speaking = True
+                send_to_arduino("SPEAKING")
                 if "color" in text and not light_on:
                     light_on = True
-                    send_rgb_to_arduino((200, 200, 200))
-                    print("light_on")
+                    send_to_arduino("KEYWORD")
+                    # print("light_on")
+            # send_to_arduino(is_speaking)
+            
+
 
 
 def check_speaking():
@@ -135,11 +148,12 @@ def check_speaking():
             is_speaking = False
             in_speaking_session = False
             light_on = False
-            send_rgb_to_arduino((0, 0, 0))
-            print("User stops speaking")
+            send_to_arduino("END SESSION")
+            # print("User stops speaking session")
         elif time.time() - last_speech_time <= speech_timeout and not is_speaking:
             is_speaking = True
-            print("User starts speaking")
+            send_to_arduino("START SESSION")
+            # print("User starts speaking session")
         time.sleep(0.5)
 
 
